@@ -1,0 +1,28 @@
+{% extends "lancamentos/base.html" %}
+{% load socialaccount %}
+
+{% block titulo %}Criar conta{% endblock %}
+
+{% block conteudo %}
+    <div class="painel form-caixa auth">
+        <h2>Criar conta</h2>
+
+        <form method="post" action="{% url 'account_signup' %}">
+            {% csrf_token %}
+            {{ form.as_p }}
+            {{ redirect_field }}
+            <div class="botoes">
+                <button type="submit">Criar conta</button>
+            </div>
+        </form>
+
+        <div class="divisor">ou</div>
+
+        <form method="post" action="{% provider_login_url 'google' process='login' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-google">Continuar com o Google</button>
+        </form>
+
+        <p class="suave">Já tem conta? <a href="{% url 'account_login' %}">Entrar</a></p>
+    </div>
+{% endblock %}

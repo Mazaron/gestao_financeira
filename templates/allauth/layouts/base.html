@@ -1,0 +1,11 @@
+{% extends "lancamentos/base.html" %}
+
+{% block titulo %}{% block head_title %}{% endblock head_title %}{% endblock titulo %}
+
+{% block conteudo %}
+    <div class="painel form-caixa auth">
+        {% block content %}{% endblock content %}
+    </div>
+{% endblock conteudo %}
+
+{% block scripts %}{% block extra_body %}{% endblock extra_body %}{% endblock scripts %}

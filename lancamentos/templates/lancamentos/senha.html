@@ -1,0 +1,17 @@
+{% extends "lancamentos/base.html" %}
+
+{% block titulo %}Alterar senha{% endblock %}
+
+{% block conteudo %}
+    <div class="painel form-caixa">
+        <h2>Alterar senha</h2>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="botoes">
+                <button class="btn" type="submit">Alterar senha</button>
+                <a class="btn btn-claro" href="{% url 'perfil' %}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+{% endblock %}

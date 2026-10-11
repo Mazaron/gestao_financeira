@@ -1,0 +1,50 @@
+{% extends "lancamentos/base.html" %}
+
+{% block titulo %}Cartões{% endblock %}
+
+{% block conteudo %}
+    <section class="painel">
+        <h2>Meus cartões</h2>
+        {% if cartoes %}
+            <table class="tabela">
+                <tr>
+                    <th>Cartão</th>
+                    <th>Fecha dia</th>
+                    <th>Vence dia</th>
+                    <th class="num">Fatura deste mês</th>
+                    <th class="num">A vencer (todas as parcelas)</th>
+                    <th></th>
+                </tr>
+                {% for c in cartoes %}
+                <tr>
+                    <td>{{ c.nome }}</td>
+                    <td>{{ c.dia_fechamento }}</td>
+                    <td>{{ c.dia_vencimento }}</td>
+                    <td class="num">R$ {{ c.fatura_mes|floatformat:"2g" }}</td>
+                    <td class="num">R$ {{ c.a_vencer|floatformat:"2g" }}</td>
+                    <td class="acoes">
+                        <form method="post" action="{% url 'excluir_cartao' c.pk %}"
+                              onsubmit="return confirm('Excluir o cartão {{ c.nome|escapejs }}?');">
+                            {% csrf_token %}
+                            <button type="submit" class="link-perigo">Excluir</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        {% else %}
+            <p class="suave">Você ainda não cadastrou nenhum cartão.</p>
+        {% endif %}
+    </section>
+
+    <section class="painel form-caixa">
+        <h2>Adicionar cartão</h2>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="botoes">
+                <button class="btn" type="submit">Salvar cartão</button>
+            </div>
+        </form>
+    </section>
+{% endblock %}

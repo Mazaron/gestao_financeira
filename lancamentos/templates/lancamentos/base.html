@@ -1,0 +1,57 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block titulo %}Minhas Finanças{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'lancamentos/estilo.css' %}">
+</head>
+<body>
+    {% if user.is_authenticated %}
+    <nav class="menu">
+        <div class="menu-itens">
+            <p class="menu-titulo">Menu</p>
+            <a href="{% url 'lista' %}" class="{% if request.resolver_match.url_name == 'lista' %}ativo{% endif %}">Início</a>
+            <a href="{% url 'cartoes' %}" class="{% if request.resolver_match.url_name == 'cartoes' %}ativo{% endif %}">Cartões</a>
+            <a href="{% url 'perfil' %}" class="{% if request.resolver_match.url_name == 'perfil' %}ativo{% endif %}">Perfil</a>
+            <a href="{% url 'ajuda' %}" class="{% if request.resolver_match.url_name == 'ajuda' %}ativo{% endif %}">Ajuda</a>
+
+
+
+            <form method="post" action="{% url 'account_logout' %}" class="menu-sair">
+                {% csrf_token %}
+                <button type="submit">Sair</button>
+            </form>
+        </div>
+        <div class="menu-aba">&rsaquo;</div>
+    </nav>
+    {% endif %}
+
+    <header class="topo">
+        <a href="{% if user.is_authenticated %}{% url 'lista' %}{% else %}{% url 'account_login' %}{% endif %}">Minhas Finanças</a>
+        {% if user.is_authenticated %}
+            <a class="btn" href="{% url 'novo' %}">+ Novo lançamento</a>
+        {% else %}
+            <span class="botoes">
+                <a class="btn btn-claro" href="{% url 'account_login' %}">Entrar</a>
+                <a class="btn" href="{% url 'account_signup' %}">Criar conta</a>
+            </span>
+        {% endif %}
+    </header>
+
+    <main class="container">
+        {% if messages %}
+            <ul class="mensagens">
+                {% for m in messages %}
+                    <li class="{{ m.tags }}">{{ m }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+
+        {% block conteudo %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

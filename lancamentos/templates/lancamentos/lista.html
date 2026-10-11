@@ -1,0 +1,120 @@
+{% extends "lancamentos/base.html" %}
+
+{% block conteudo %}
+    <h2 class="saudacao"><strong>{{ saudacao }}</strong>, {{ user.first_name|default:user.username }}!</h2>
+    <div class="periodo">
+        <a class="btn btn-claro" href="?ano={{ anterior.ano }}&mes={{ anterior.mes }}">&laquo;</a>
+        <h1>{{ periodo|date:"F \d\e Y"|capfirst }}</h1>
+        <a class="btn btn-claro" href="?ano={{ proximo.ano }}&mes={{ proximo.mes }}">&raquo;</a>
+    </div>
+
+    <section class="cards">
+        <div class="card receitas">
+            <div class="rotulo">Receitas</div>
+            <div class="valor">R$ {{ receitas|floatformat:"2g" }}</div>
+        </div>
+        <div class="card despesas">
+            <div class="rotulo">Despesas</div>
+            <div class="valor">R$ {{ despesas|floatformat:"2g" }}</div>
+        </div>
+        <div class="card saldo {% if saldo < 0 %}negativo{% endif %}">
+            <div class="rotulo">Saldo final</div>
+            <div class="valor">R$ {{ saldo|floatformat:"2g" }}</div>
+        </div>
+    </section>
+
+    <section class="grade">
+        <div class="painel">
+            <h2>Saídas por dia</h2>
+            <div class="calendario">
+                <div class="cab">Dom</div><div class="cab">Seg</div><div class="cab">Ter</div>
+                <div class="cab">Qua</div><div class="cab">Qui</div><div class="cab">Sex</div>
+                <div class="cab">Sáb</div>
+
+                {% for semana in semanas %}
+                    {% for c in semana %}
+                        {% if c %}
+                            <a class="dia {% if c.hoje %}hoje{% endif %} {% if c.selecionado %}selecionado{% endif %}"
+                            href="?ano={{ periodo.year }}&mes={{ periodo.month }}&dia={{ c.dia }}#lancamentos">
+                                <span class="num">{{ c.dia }}</span>
+                                {% if c.gasto %}
+                                    <span class="gasto">- R$ {{ c.gasto|floatformat:"2g" }}</span>
+                                {% endif %}
+                            </a>
+                        {% else %}
+                            <div class="dia vazio"></div>
+                        {% endif %}
+                    {% endfor %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="painel">
+            <h2>Despesas por categoria</h2>
+            <canvas id="grafico"></canvas>
+            {{ grafico|json_script:"dados-grafico" }}
+        </div>
+    </section>
+
+    <section class="painel" id="lancamentos">
+        <h2>
+            {% if dia_selecionado %}Lançamentos de {{ dia_selecionado|date:"d/m/Y" }}{% else %}Lançamentos do mês{% endif %}
+        </h2>
+        {% if dia_selecionado %}
+            <p><a href="?ano={{ periodo.year }}&mes={{ periodo.month }}">&laquo; Ver o mês todo</a></p>
+        {% endif %}
+        <table class="tabela">
+            <tr>
+                <th>Data</th>
+                <th>Descrição</th>
+                <th>Categoria</th>
+                <th class="num">Valor (R$)</th>
+                <th></th>
+            </tr>
+            {% for l in lancamentos %}
+            <tr>
+                <td>{{ l.data|date:"d/m/Y" }}</td>
+                <td>{{ l.descricao }}{% if l.total_parcelas %} ({{ l.parcela_atual }}/{{ l.total_parcelas }}){% endif %}{% if l.cartao %}<br><span class="suave">{{ l.cartao.nome }} · compra em {{ l.data_compra|date:"d/m/Y" }}</span>{% endif %}</td>
+                <td>{{ l.categoria.nome }}</td>
+                <td class="num {% if l.categoria.tipo == 'R' %}pos{% else %}neg{% endif %}">
+                    {% if l.categoria.tipo == 'R' %}+{% else %}-{% endif %} {{ l.valor_reais|floatformat:"2g" }}
+                </td>
+                <td class="acoes">
+                    <a href="{% url 'editar' l.pk %}">Editar</a>
+                    <a class="perigo" href="{% url 'excluir' l.pk %}">Excluir</a>
+                </td>
+            </tr>
+            <tr><td colspan="5">Nenhum lançamento {% if dia_selecionado %}neste dia{% else %}neste mês{% endif %}.</td></tr>
+            {% endfor %}
+        </table>
+    </section>
+{% endblock %}
+
+{% block scripts %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script>
+        const dados = JSON.parse(document.getElementById("dados-grafico").textContent);
+        const area = document.getElementById("grafico");
+        const cores = ["#60a5fa", "#f87171", "#34d399", "#fbbf24", "#a78bfa",
+                       "#f472b6", "#2dd4bf", "#fb923c", "#818cf8", "#a3e635"];
+
+        Chart.defaults.color = "#cbd5e1";
+
+        if (dados.labels.length > 0) {
+            new Chart(area, {
+                type: "doughnut",
+                data: {
+                    labels: dados.labels,
+                    datasets: [{
+                        data: dados.valores,
+                        backgroundColor: dados.labels.map((_, i) => cores[i % cores.length]),
+                        borderColor: "#151b2b",
+                        borderWidth: 2,
+                    }],
+                },
+            });
+        } else {
+            area.replaceWith("Sem despesas neste mês.");
+        }
+    </script>
+{% endblock %}

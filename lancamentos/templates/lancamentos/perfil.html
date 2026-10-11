@@ -1,0 +1,27 @@
+{% extends "lancamentos/base.html" %}
+
+{% block titulo %}Perfil{% endblock %}
+
+{% block conteudo %}
+    <div class="painel form-caixa">
+        <h2>Perfil</h2>
+        <dl class="dados">
+            <dt>Usuário</dt><dd>{{ user.username }}</dd>
+            <dt>E-mail</dt><dd>{{ user.email|default:"não informado" }}</dd>
+            <dt>Membro desde</dt><dd>{{ user.date_joined|date:"d/m/Y" }}</dd>
+        </dl>
+
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="botoes">
+                <button class="btn" type="submit">Salvar</button>
+            </div>
+        </form>
+
+        <div class="botoes" style="margin-top: 16px;">
+            <a class="btn btn-claro" href="{% url 'account_change_password' %}">Alterar senha</a>
+            <a class="btn btn-claro" href="{% url 'account_email' %}">Gerenciar e-mails</a>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "lancamentos/base.html" %}
+
+{% block titulo %}Excluir lançamento{% endblock %}
+
+{% block conteudo %}
+    <div class="painel form-caixa">
+        <h2>Excluir lançamento</h2>
+        <p>
+            Tem certeza que deseja excluir
+            <strong>{{ lancamento.descricao }}{% if lancamento.total_parcelas %}
+            ({{ lancamento.parcela_atual }}/{{ lancamento.total_parcelas }}){% endif %}</strong>
+            de R$ {{ lancamento.valor_reais|floatformat:"2g" }} em {{ lancamento.data|date:"d/m/Y" }}?
+        </p>
+
+        <form method="post" class="botoes">
+            {% csrf_token %}
+            {% if lancamento.grupo %}
+                <button class="btn btn-perigo" type="submit" name="escopo" value="uma">Excluir só esta parcela</button>
+                <button class="btn btn-perigo" type="submit" name="escopo" value="todas">Excluir as {{ qtd_grupo }} parcelas</button>
+            {% else %}
+                <button class="btn btn-perigo" type="submit">Sim, excluir</button>
+            {% endif %}
+            <a class="btn btn-claro" href="{% url 'lista' %}?ano={{ lancamento.data.year }}&mes={{ lancamento.data.month }}">Cancelar</a>
+        </form>
+    </div>
+{% endblock %}
