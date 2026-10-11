@@ -8,8 +8,20 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from .forms import CartaoForm, LancamentoForm, PerfilForm
-from .models import Cartao, Lancamento
+from .forms import CartaoForm, InvestimentoForm, LancamentoForm, PerfilForm
+from .models import Cartao, Investimento, Lancamento
+
+from .calculos import estimar_impostos, evolucao
+from .forms import (
+    CartaoForm,
+    InvestimentoForm,
+    LancamentoForm,
+    MovimentacaoForm,
+    PerfilForm,
+    PosicaoForm,
+)
+from .models import Cartao, Investimento, Lancamento, Movimentacao, Posicao
+
 
 
 @login_required
@@ -216,3 +228,172 @@ def excluir_cartao(request, pk):
     return redirect("cartoes")
 
 
+@login_required
+def investimentos(request):
+    todos = list(
+        Investimento.objects.filter(usuario=request.user)
+        .prefetch_related("movimentacoes", "posicoes")
+        .order_by("tipo", "nome")
+    )
+    hoje = timezone.localdate()
+    for i in todos:
+        i.impostos = estimar_impostos(i, hoje)
+
+    ativos = [i for i in todos if i.ativo]
+    resgatados = [i for i in todos if not i.ativo]
+
+    total_aportado = sum(i.aportado_centavos for i in ativos)
+    total_atual = sum(i.atual_centavos for i in ativos)
+    lucro = sum(i.lucro_centavos for i in ativos)
+    rentabilidade = lucro / total_aportado * 100 if total_aportado else 0
+
+    por_tipo = {}
+    for i in ativos:
+        rotulo = i.get_tipo_display()
+        por_tipo[rotulo] = por_tipo.get(rotulo, 0) + i.atual_centavos
+    grafico = {
+        "labels": list(por_tipo.keys()),
+        "valores": [v / 100 for v in por_tipo.values()],
+    }
+
+    datas, investido, valores = evolucao(todos)
+    serie = {
+        "labels": [d.strftime("%d/%m/%Y") for d in datas],
+        "investido": investido,
+        "valores": valores,
+    }
+
+    com_prazo = [i for i in ativos if i.data_vencimento]
+    proximos = sorted(com_prazo, key=lambda i: i.data_vencimento)[:5]
+
+    contexto = {
+        "ativos": ativos,
+        "resgatados": resgatados,
+        "proximos": proximos,
+        "total_aportado": total_aportado / 100,
+        "total_atual": total_atual / 100,
+        "lucro": lucro / 100,
+        "rentabilidade": rentabilidade,
+        "grafico": grafico,
+        "evolucao": serie,
+    }
+    return render(request, "lancamentos/investimentos.html", contexto)
+
+
+@login_required
+def novo_investimento(request):
+    if request.method == "POST":
+        form = InvestimentoForm(request.POST)
+        if form.is_valid():
+            investimento = form.save(commit=False)
+            investimento.usuario = request.user
+            investimento.save()
+            valor = form.cleaned_data["valor_atual"]
+            if valor is not None:
+                investimento.informar_valor(int(valor * 100))
+            messages.success(request, "Investimento cadastrado.")
+            return redirect("investimentos")
+    else:
+        form = InvestimentoForm()
+    return render(
+        request, "lancamentos/investimento_form.html", {"form": form, "editando": False}
+    )
+
+
+@login_required
+def editar_investimento(request, pk):
+    investimento = get_object_or_404(Investimento, pk=pk, usuario=request.user)
+    if request.method == "POST":
+        form = InvestimentoForm(request.POST, instance=investimento)
+        if form.is_valid():
+            investimento = form.save()
+            valor = form.cleaned_data["valor_atual"]
+            if valor is not None:
+                centavos = int(valor * 100)
+                antigo = investimento.valor_atual_centavos is not None
+                if (
+                    antigo
+                    or not investimento.tem_valor_informado
+                    or centavos != investimento.atual_centavos
+                ):
+                    investimento.informar_valor(centavos)
+            messages.success(request, "Investimento atualizado.")
+            return redirect("investimentos")
+    else:
+        form = InvestimentoForm(instance=investimento)
+    return render(
+        request, "lancamentos/investimento_form.html", {"form": form, "editando": True}
+    )
+
+
+@login_required
+def detalhe_investimento(request, pk):
+    inv = get_object_or_404(
+        Investimento.objects.prefetch_related("movimentacoes", "posicoes"),
+        pk=pk,
+        usuario=request.user,
+    )
+    form_mov = MovimentacaoForm(prefix="mov", investimento=inv)
+    form_val = PosicaoForm(prefix="val", investimento=inv)
+
+    if request.method == "POST":
+        acao = request.POST.get("acao")
+
+        if acao == "movimentacao":
+            form_mov = MovimentacaoForm(request.POST, prefix="mov", investimento=inv)
+            if form_mov.is_valid():
+                d = form_mov.cleaned_data
+                Movimentacao.objects.create(
+                    investimento=inv,
+                    tipo=d["tipo"],
+                    data=d["data"],
+                    valor_centavos=int(d["valor"] * 100),
+                )
+                messages.success(request, "Movimentação registrada.")
+                return redirect("detalhe_investimento", pk=inv.pk)
+
+        elif acao == "valor":
+            form_val = PosicaoForm(request.POST, prefix="val", investimento=inv)
+            if form_val.is_valid():
+                d = form_val.cleaned_data
+                inv.informar_valor(int(d["valor"] * 100), d["data"])
+                messages.success(request, "Valor registrado.")
+                return redirect("detalhe_investimento", pk=inv.pk)
+
+        elif acao in ("excluir_mov", "excluir_pos"):
+            item_id = request.POST.get("id", "")
+            if item_id.isdigit():
+                modelo = Movimentacao if acao == "excluir_mov" else Posicao
+                modelo.objects.filter(pk=item_id, investimento=inv).delete()
+                messages.success(request, "Item excluído.")
+            return redirect("detalhe_investimento", pk=inv.pk)
+
+    datas, investido, valores = evolucao([inv])
+    contexto = {
+        "inv": inv,
+        "movimentacoes": inv.movimentacoes.all(),
+        "posicoes": inv.posicoes.all(),
+        "aportado": inv.aportado_centavos / 100,
+        "resgatado": inv.resgatado_centavos / 100,
+        "atual": inv.atual_centavos / 100,
+        "lucro": inv.lucro_centavos / 100,
+        "rentab": inv.rentabilidade_pct,
+        "impostos": estimar_impostos(inv, timezone.localdate()),
+        "evolucao": {
+            "labels": [d.strftime("%d/%m/%Y") for d in datas],
+            "investido": investido,
+            "valores": valores,
+        },
+        "form_mov": form_mov,
+        "form_val": form_val,
+    }
+    return render(request, "lancamentos/investimento_detalhe.html", contexto)
+
+
+@login_required
+def excluir_investimento(request, pk):
+    investimento = get_object_or_404(Investimento, pk=pk, usuario=request.user)
+    if request.method == "POST":
+        investimento.delete()
+        messages.success(request, "Investimento excluído.")
+    return redirect("investimentos")

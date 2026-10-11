@@ -1,0 +1,220 @@
+{% extends "lancamentos/base.html" %}
+{% load static %}
+
+{% block titulo %}{{ inv.nome }}{% endblock %}
+
+{% block conteudo %}
+    <div class="cabecalho-pagina">
+        <div>
+            <p class="suave" style="margin: 0 0 4px;"><a href="{% url 'investimentos' %}">&laquo; Investimentos</a></p>
+            <h1>{{ inv.nome }}</h1>
+            <span class="suave">
+                {{ inv.get_tipo_display }}{% if inv.instituicao %} · {{ inv.instituicao }}{% endif %}{% if not inv.ativo %} · encerrado{% endif %}
+            </span>
+        </div>
+        <a class="btn btn-claro" href="{% url 'editar_investimento' inv.pk %}">Editar dados</a>
+    </div>
+
+    {% include "lancamentos/_aviso_vencimentos.html" %}
+
+    <section class="cards cards-4">
+        <div class="card saldo">
+            <div class="rotulo">Aportado</div>
+            <div class="valor">R$ {{ aportado|floatformat:"2g" }}</div>
+        </div>
+        <div class="card saldo">
+            <div class="rotulo">Resgatado</div>
+            <div class="valor">R$ {{ resgatado|floatformat:"2g" }}</div>
+        </div>
+        <div class="card saldo">
+            <div class="rotulo">Valor atual</div>
+            <div class="valor">R$ {{ atual|floatformat:"2g" }}</div>
+        </div>
+        <div class="card {% if lucro < 0 %}despesas{% else %}receitas{% endif %}">
+            <div class="rotulo">Lucro</div>
+            <div class="valor">
+                {% if lucro > 0 %}+{% endif %}R$ {{ lucro|floatformat:"2g" }}
+                {% if rentab is not None %}<span class="sub">({% if rentab > 0 %}+{% endif %}{{ rentab|floatformat:"2" }}%)</span>{% endif %}
+            </div>
+        </div>
+    </section>
+
+    {% if not inv.tem_valor_informado %}
+        <p class="suave">Informe o valor atual (painel "Valores informados", abaixo) para acompanhar a rentabilidade.</p>
+    {% endif %}
+
+    <section class="painel">
+        <h2>Dados</h2>
+        <dl class="dados dados-largo">
+            <dt>Primeiro aporte</dt><dd>{{ inv.data_aplicacao|date:"d/m/Y" }}</dd>
+            <dt>Taxa</dt><dd>{{ inv.taxa_formatada }}</dd>
+            <dt>Prazo</dt>
+            <dd>{% if inv.data_vencimento %}{{ inv.data_vencimento|date:"d/m/Y" }} · {{ inv.prazo_texto }}{% else %}Sem prazo{% endif %}</dd>
+            <dt>Liquidez</dt><dd>{{ inv.get_liquidez_display }}</dd>
+            {% if inv.observacoes %}<dt>Observações</dt><dd>{{ inv.observacoes|linebreaksbr }}</dd>{% endif %}
+        </dl>
+    </section>
+
+    <section class="painel">
+        <h2>Evolução</h2>
+        <div class="grafico-alto"><canvas id="grafico-evolucao"></canvas></div>
+        {{ evolucao|json_script:"dados-evolucao" }}
+    </section>
+
+    <section class="painel">
+        <h2>Estimativa de impostos se resgatar hoje</h2>
+        {% if impostos %}
+            {% if impostos.isento %}
+                <p>Este tipo de investimento é <strong>isento de IR</strong> (e de IOF) para pessoa física.</p>
+            {% endif %}
+            <dl class="dados dados-largo">
+                <dt>Valor bruto</dt><dd>R$ {{ impostos.bruto|floatformat:"2g" }}</dd>
+                <dt>Rendimento</dt><dd>R$ {{ impostos.rendimento|floatformat:"2g" }}</dd>
+                <dt>IOF (resgate antes de 30 dias)</dt><dd>R$ {{ impostos.iof|floatformat:"2g" }}</dd>
+                <dt>Imposto de renda</dt><dd>R$ {{ impostos.ir|floatformat:"2g" }}</dd>
+                <dt>Líquido estimado</dt><dd><strong>R$ {{ impostos.liquido|floatformat:"2g" }}</strong></dd>
+                <dt>Alíquota efetiva</dt><dd>{{ impostos.aliquota_efetiva|floatformat:"2" }}% do rendimento</dd>
+            </dl>
+            <p class="suave nota">
+                Estimativa simplificada, para planejamento (não é orientação tributária). Cada aporte conta o próprio prazo
+                em dias corridos, e os resgates consomem os aportes mais antigos primeiro. IR regressivo: 22,5% até 180 dias,
+                20% até 360, 17,5% até 720 e 15% acima; IOF só nos primeiros 30 dias. O cálculo real da instituição pode diferir.
+            </p>
+        {% else %}
+            <p class="suave">
+                A estimativa existe para renda fixa, Tesouro e produtos isentos. Para "{{ inv.get_tipo_display }}" as regras
+                são específicas e ainda não foram implementadas, ou não há dinheiro aplicado.
+            </p>
+        {% endif %}
+    </section>
+
+    <section class="duas-colunas">
+        <div class="painel">
+            <h2>Aportes e resgates</h2>
+            <table class="tabela">
+                <tr>
+                    <th>Data</th>
+                    <th>Tipo</th>
+                    <th class="num">Valor (R$)</th>
+                    <th></th>
+                </tr>
+                {% for m in movimentacoes %}
+                <tr>
+                    <td>{{ m.data|date:"d/m/Y" }}</td>
+                    <td>{{ m.get_tipo_display }}</td>
+                    <td class="num {% if m.tipo == 'aporte' %}pos{% else %}neg{% endif %}">
+                        {% if m.tipo == 'aporte' %}+{% else %}-{% endif %} {{ m.valor_reais|floatformat:"2g" }}
+                    </td>
+                    <td class="acoes">
+                        <form method="post" onsubmit="return confirm('Excluir esta movimentação?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="acao" value="excluir_mov">
+                            <input type="hidden" name="id" value="{{ m.pk }}">
+                            <button type="submit" class="link-perigo">Excluir</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                <tr>
+                    <td>{{ inv.data_aplicacao|date:"d/m/Y" }}</td>
+                    <td>Primeiro aporte</td>
+                    <td class="num pos">+ {{ inv.valor_aplicado_reais|floatformat:"2g" }}</td>
+                    <td></td>
+                </tr>
+            </table>
+
+            <form method="post" class="form-linha">
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="movimentacao">
+                {{ form_mov.as_p }}
+                <button class="btn" type="submit">Registrar</button>
+            </form>
+        </div>
+
+        <div class="painel">
+            <h2>Valores informados</h2>
+            <p class="suave nota">
+                Registre o <strong>valor total</strong> do investimento em uma data (por exemplo, o saldo no app da corretora).
+                O valor deve já incluir os aportes e resgates feitos até essa data; o que for registrado depois dela
+                é somado ou subtraído automaticamente.
+            </p>
+            <table class="tabela">
+                <tr>
+                    <th>Data</th>
+                    <th class="num">Valor (R$)</th>
+                    <th></th>
+                </tr>
+                {% for p in posicoes %}
+                <tr>
+                    <td>{{ p.data|date:"d/m/Y" }}</td>
+                    <td class="num">{{ p.valor_reais|floatformat:"2g" }}</td>
+                    <td class="acoes">
+                        <form method="post" onsubmit="return confirm('Excluir este valor?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="acao" value="excluir_pos">
+                            <input type="hidden" name="id" value="{{ p.pk }}">
+                            <button type="submit" class="link-perigo">Excluir</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" class="suave">Nenhum valor informado ainda.</td></tr>
+                {% endfor %}
+            </table>
+
+            <form method="post" class="form-linha">
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="valor">
+                {{ form_val.as_p }}
+                <button class="btn" type="submit">Registrar</button>
+            </form>
+        </div>
+    </section>
+{% endblock %}
+
+{% block scripts %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script src="{% static 'lancamentos/mascaras.js' %}"></script>
+    <script>
+        Chart.defaults.color = "#cbd5e1";
+        Chart.defaults.borderColor = "#2a344d";
+        const reais = (v) => "R$ " + Number(v).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2, maximumFractionDigits: 2,
+        });
+
+        const evo = JSON.parse(document.getElementById("dados-evolucao").textContent);
+        new Chart(document.getElementById("grafico-evolucao"), {
+            type: "line",
+            data: {
+                labels: evo.labels,
+                datasets: [
+                    {
+                        label: "Total investido (aportes − resgates)",
+                        data: evo.investido,
+                        borderColor: "#94a3b8",
+                        backgroundColor: "#94a3b8",
+                        stepped: true,
+                        pointRadius: 3,
+                    },
+                    {
+                        label: "Valor do investimento",
+                        data: evo.valores,
+                        borderColor: "#34d399",
+                        backgroundColor: "#34d399",
+                        tension: 0.2,
+                        pointRadius: 3,
+                    },
+                ],
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: { y: { ticks: { callback: reais } } },
+                plugins: {
+                    tooltip: {
+                        callbacks: { label: (c) => c.dataset.label + ": " + reais(c.parsed.y) },
+                    },
+                },
+            },
+        });
+    </script>
+{% endblock %}

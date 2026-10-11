@@ -1,0 +1,13 @@
+{% if investimentos_vencendo %}
+    <div class="aviso">
+        <strong>Atenção aos vencimentos</strong>
+        <ul>
+            {% for i in investimentos_vencendo|slice:":5" %}
+                <li>
+                    <a href="{% url 'detalhe_investimento' i.pk %}">{{ i.nome }}</a>
+                    · {{ i.data_vencimento|date:"d/m/Y" }} · {{ i.prazo_texto }}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}

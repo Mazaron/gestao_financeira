@@ -6,7 +6,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from .models import Cartao, Lancamento
+from .models import Cartao, Investimento, Lancamento, Movimentacao
 from .utils import adicionar_meses, formatar_reais, vencimentos_da_compra
 
 # Aceita: 1.123,00 | 1123,00 | 1123 | 12,5 | 0,99
@@ -158,3 +158,173 @@ class PerfilForm(forms.ModelForm):
         model = User
         fields = ["first_name"]
         labels = {"first_name": "Nome"}
+
+
+def reais_para_decimal(texto):
+    """Converte '1.123,00' em Decimal('1123.00'); levanta erro se o formato for inválido."""
+    texto = texto.strip()
+    if not PADRAO_VALOR.fullmatch(texto):
+        raise forms.ValidationError("Digite o valor no formato 1.123,00.")
+    valor = Decimal(texto.replace(".", "").replace(",", "."))
+    if valor > VALOR_MAXIMO:
+        raise forms.ValidationError("Valor muito alto.")
+    return valor
+
+
+def _campo_dinheiro(label, obrigatorio=True, ajuda=""):
+    return forms.CharField(
+        label=label,
+        required=obrigatorio,
+        help_text=ajuda,
+        widget=forms.TextInput(attrs={
+            "placeholder": "0,00",
+            "inputmode": "numeric",
+            "autocomplete": "off",
+            "data-mascara": "dinheiro",
+        }),
+    )
+
+
+def _campo_data(label, obrigatorio=True):
+    return forms.DateField(
+        label=label,
+        required=obrigatorio,
+        input_formats=["%d/%m/%Y"],
+        error_messages={"invalid": "Use o formato dd/mm/aaaa."},
+        widget=forms.DateInput(format="%d/%m/%Y", attrs={
+            "placeholder": "dd/mm/aaaa",
+            "inputmode": "numeric",
+            "autocomplete": "off",
+            "data-mascara": "data",
+        }),
+    )
+
+
+class InvestimentoForm(forms.ModelForm):
+    valor_aplicado = _campo_dinheiro(
+        "Valor do primeiro aporte (R$)",
+        ajuda="Aportes seguintes e resgates são registrados na página do investimento.",
+    )
+    valor_atual = _campo_dinheiro(
+        "Valor atual (R$)",
+        obrigatorio=False,
+        ajuda="Opcional. Registra o valor de hoje no histórico (gráfico e rentabilidade).",
+    )
+    data_aplicacao = _campo_data("Data do primeiro aporte")
+    data_vencimento = _campo_data("Vencimento (se houver)", obrigatorio=False)
+    taxa = forms.CharField(
+        label="Taxa (%)",
+        required=False,
+        help_text="Ex.: 12,50 (prefixada), 110 (% do CDI) ou 6,20 (IPCA + 6,20% a.a.).",
+        widget=forms.TextInput(attrs={
+            "placeholder": "12,50",
+            "inputmode": "decimal",
+            "autocomplete": "off",
+        }),
+    )
+
+    class Meta:
+        model = Investimento
+        fields = [
+            "nome", "tipo", "instituicao", "data_aplicacao", "valor_aplicado",
+            "valor_atual", "tipo_taxa", "taxa", "data_vencimento", "liquidez",
+            "ativo", "observacoes",
+        ]
+        labels = {
+            "nome": "Nome do investimento",
+            "tipo": "Tipo",
+            "instituicao": "Instituição (banco ou corretora)",
+            "tipo_taxa": "Tipo de taxa",
+            "liquidez": "Liquidez",
+            "ativo": "Investimento ativo (desmarque se já resgatou)",
+            "observacoes": "Observações",
+        }
+        widgets = {"observacoes": forms.Textarea(attrs={"rows": 3})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        inv = self.instance
+        if inv.pk and not self.is_bound:
+            self.initial["valor_aplicado"] = formatar_reais(inv.valor_aplicado_centavos)
+            if inv.tem_valor_informado:
+                self.initial["valor_atual"] = formatar_reais(inv.atual_centavos)
+            if inv.taxa is not None:
+                self.initial["taxa"] = f"{inv.taxa:.2f}".replace(".", ",")
+        elif not inv.pk:
+            self.fields["data_aplicacao"].initial = timezone.localdate
+
+    def clean_valor_aplicado(self):
+        valor = reais_para_decimal(self.cleaned_data["valor_aplicado"])
+        if valor <= 0:
+            raise forms.ValidationError("O valor deve ser maior que zero.")
+        return valor
+
+    def clean_valor_atual(self):
+        texto = self.cleaned_data["valor_atual"].strip()
+        if not texto:
+            return None
+        return reais_para_decimal(texto)
+
+    def clean_taxa(self):
+        texto = self.cleaned_data["taxa"].strip()
+        if not texto:
+            return None
+        if not re.fullmatch(r"\d{1,4}(,\d{1,2})?", texto):
+            raise forms.ValidationError("Digite a taxa no formato 12,50.")
+        return Decimal(texto.replace(",", "."))
+
+    def clean(self):
+        dados = super().clean()
+        tipo_taxa = dados.get("tipo_taxa")
+        if tipo_taxa == "nenhuma":
+            dados["taxa"] = None
+        elif tipo_taxa and dados.get("taxa") is None and "taxa" not in self.errors:
+            self.add_error("taxa", "Informe a taxa para esse tipo.")
+
+        aplicacao = dados.get("data_aplicacao")
+        vencimento = dados.get("data_vencimento")
+        if aplicacao and vencimento and vencimento < aplicacao:
+            self.add_error("data_vencimento", "O vencimento não pode ser antes da aplicação.")
+        return dados
+
+    def save(self, commit=True):
+        inv = super().save(commit=False)
+        inv.valor_aplicado_centavos = int(self.cleaned_data["valor_aplicado"] * 100)
+        if commit:
+            inv.save()
+        return inv
+
+class _BaseMovimento(forms.Form):
+    data = _campo_data("Data")
+
+    def __init__(self, *args, investimento=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.investimento = investimento
+        if not self.is_bound:
+            self.fields["data"].initial = timezone.localdate
+
+    def clean_data(self):
+        data = self.cleaned_data["data"]
+        if self.investimento and data < self.investimento.data_aplicacao:
+            raise forms.ValidationError("A data não pode ser anterior ao primeiro aporte.")
+        return data
+
+
+class MovimentacaoForm(_BaseMovimento):
+    tipo = forms.ChoiceField(label="Tipo", choices=Movimentacao.TIPOS)
+    valor = _campo_dinheiro("Valor (R$)")
+
+    field_order = ["tipo", "data", "valor"]
+
+    def clean_valor(self):
+        valor = reais_para_decimal(self.cleaned_data["valor"])
+        if valor <= 0:
+            raise forms.ValidationError("O valor deve ser maior que zero.")
+        return valor
+
+
+class PosicaoForm(_BaseMovimento):
+    valor = _campo_dinheiro("Valor total nessa data (R$)")
+
+    def clean_valor(self):
+        return reais_para_decimal(self.cleaned_data["valor"])

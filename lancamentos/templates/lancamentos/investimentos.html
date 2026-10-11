@@ -1,9 +1,175 @@
-{% extends "investimentos/base.html" %}
+{% extends "lancamentos/base.html" %}
 
 {% block titulo %}Investimentos{% endblock %}
 
 {% block conteudo %}
-    <div class="painel form-caixa">
-        <h2>Investimentos</h2>
+    <div class="cabecalho-pagina">
+        <h1>Investimentos</h1>
+        <a class="btn" href="{% url 'novo_investimento' %}">+ Novo investimento</a>
     </div>
+
+    {% include "lancamentos/_aviso_vencimentos.html" %}
+
+    <section class="cards">
+        <div class="card saldo">
+            <div class="rotulo">Total aportado</div>
+            <div class="valor">R$ {{ total_aportado|floatformat:"2g" }}</div>
+        </div>
+        <div class="card saldo">
+            <div class="rotulo">Valor atual</div>
+            <div class="valor">R$ {{ total_atual|floatformat:"2g" }}</div>
+        </div>
+        <div class="card {% if lucro < 0 %}despesas{% else %}receitas{% endif %}">
+            <div class="rotulo">Rentabilidade</div>
+            <div class="valor">
+                {% if lucro > 0 %}+{% endif %}R$ {{ lucro|floatformat:"2g" }}
+                <span class="sub">({% if rentabilidade > 0 %}+{% endif %}{{ rentabilidade|floatformat:"2" }}%)</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="painel">
+        <h2>Evolução da carteira</h2>
+        <div class="grafico-alto"><canvas id="grafico-evolucao"></canvas></div>
+        {{ evolucao|json_script:"dados-evolucao" }}
+    </section>
+
+    <section class="grade">
+        <div class="painel">
+            <h2>Próximos vencimentos</h2>
+            {% if proximos %}
+                <ul class="lista-simples">
+                    {% for i in proximos %}
+                    <li>
+                        <span>
+                            <strong>{{ i.nome }}</strong><br>
+                            <span class="suave">{{ i.data_vencimento|date:"d/m/Y" }} · {{ i.taxa_formatada }}</span>
+                        </span>
+                        <span class="{% if i.dias_para_vencer < 0 %}neg{% endif %}">{{ i.prazo_texto }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="suave">Nenhum investimento ativo com prazo definido.</p>
+            {% endif %}
+        </div>
+
+        <div class="painel">
+            <h2>Distribuição por tipo</h2>
+            <canvas id="grafico"></canvas>
+            {{ grafico|json_script:"dados-grafico" }}
+        </div>
+    </section>
+
+    <section class="painel">
+        <h2>Meus investimentos</h2>
+        {% if ativos %}
+            <table class="tabela">
+                <tr>
+                    <th>Investimento</th>
+                    <th class="num">Aportado (R$)</th>
+                    <th class="num">Atual (R$)</th>
+                    <th class="num">Rentab.</th>
+                    <th>Taxa</th>
+                    <th>Prazo e liquidez</th>
+                    <th></th>
+                </tr>
+                {% for i in ativos %}
+                    {% include "lancamentos/_linha_investimento.html" %}
+                {% endfor %}
+            </table>
+        {% else %}
+            <p class="suave">Você ainda não cadastrou nenhum investimento.</p>
+        {% endif %}
+    </section>
+
+    {% if resgatados %}
+    <section class="painel">
+        <h2>Resgatados / encerrados</h2>
+        <table class="tabela">
+            <tr>
+                <th>Investimento</th>
+                <th class="num">Aportado (R$)</th>
+                <th class="num">Atual (R$)</th>
+                <th class="num">Rentab.</th>
+                <th>Taxa</th>
+                <th>Prazo e liquidez</th>
+                <th></th>
+            </tr>
+            {% for i in resgatados %}
+                {% include "lancamentos/_linha_investimento.html" %}
+            {% endfor %}
+        </table>
+    </section>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script>
+        Chart.defaults.color = "#cbd5e1";
+        Chart.defaults.borderColor = "#2a344d";
+        const reais = (v) => "R$ " + Number(v).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2, maximumFractionDigits: 2,
+        });
+
+        // Evolução da carteira
+        const evo = JSON.parse(document.getElementById("dados-evolucao").textContent);
+        new Chart(document.getElementById("grafico-evolucao"), {
+            type: "line",
+            data: {
+                labels: evo.labels,
+                datasets: [
+                    {
+                        label: "Total investido (aportes − resgates)",
+                        data: evo.investido,
+                        borderColor: "#94a3b8",
+                        backgroundColor: "#94a3b8",
+                        stepped: true,
+                        pointRadius: 3,
+                    },
+                    {
+                        label: "Valor da carteira",
+                        data: evo.valores,
+                        borderColor: "#34d399",
+                        backgroundColor: "#34d399",
+                        tension: 0.2,
+                        pointRadius: 3,
+                    },
+                ],
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: { y: { ticks: { callback: reais } } },
+                plugins: {
+                    tooltip: {
+                        callbacks: { label: (c) => c.dataset.label + ": " + reais(c.parsed.y) },
+                    },
+                },
+            },
+        });
+
+        // Distribuição por tipo
+        const dados = JSON.parse(document.getElementById("dados-grafico").textContent);
+        const area = document.getElementById("grafico");
+        const cores = ["#60a5fa", "#f87171", "#34d399", "#fbbf24", "#a78bfa",
+                       "#f472b6", "#2dd4bf", "#fb923c", "#818cf8", "#a3e635"];
+
+        if (dados.labels.length > 0) {
+            new Chart(area, {
+                type: "doughnut",
+                data: {
+                    labels: dados.labels,
+                    datasets: [{
+                        data: dados.valores,
+                        backgroundColor: dados.labels.map((_, i) => cores[i % cores.length]),
+                        borderColor: "#151b2b",
+                        borderWidth: 2,
+                    }],
+                },
+            });
+        } else {
+            area.replaceWith("Sem investimentos ativos.");
+        }
+    </script>
 {% endblock %}

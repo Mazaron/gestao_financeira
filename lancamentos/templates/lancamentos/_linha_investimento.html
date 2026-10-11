@@ -1,0 +1,41 @@
+<tr>
+    <td>
+        <a href="{% url 'detalhe_investimento' i.pk %}"><strong>{{ i.nome }}</strong></a><br>
+        <span class="suave">{{ i.get_tipo_display }}{% if i.instituicao %} · {{ i.instituicao }}{% endif %}</span>
+    </td>
+    <td class="num">
+        {{ i.aportado_reais|floatformat:"2g" }}
+        {% if i.resgatado_centavos %}<br><span class="suave">resgatado: {{ i.resgatado_reais|floatformat:"2g" }}</span>{% endif %}
+    </td>
+    <td class="num">
+        {{ i.atual_reais|floatformat:"2g" }}
+        {% if i.impostos %}<br><span class="suave">líq. est.: {{ i.impostos.liquido|floatformat:"2g" }}</span>{% endif %}
+    </td>
+    <td class="num">
+        {% if i.rentabilidade_pct is None %}
+            <span class="suave">—</span>
+        {% else %}
+            <span class="{% if i.rentabilidade_pct < 0 %}neg{% else %}pos{% endif %}">
+                {% if i.rentabilidade_pct > 0 %}+{% endif %}{{ i.rentabilidade_pct|floatformat:"2" }}%
+            </span>
+        {% endif %}
+    </td>
+    <td>{{ i.taxa_formatada }}</td>
+    <td>
+        {% if i.data_vencimento %}
+            {{ i.data_vencimento|date:"d/m/Y" }}<br><span class="suave">{{ i.prazo_texto }}</span>
+        {% else %}
+            Sem prazo
+        {% endif %}
+        <br><span class="suave">Liquidez: {{ i.get_liquidez_display|lower }}</span>
+    </td>
+    <td class="acoes">
+        <a href="{% url 'detalhe_investimento' i.pk %}">Detalhes</a>
+        <a href="{% url 'editar_investimento' i.pk %}">Editar</a>
+        <form method="post" action="{% url 'excluir_investimento' i.pk %}"
+              onsubmit="return confirm('Excluir {{ i.nome|escapejs }}?');">
+            {% csrf_token %}
+            <button type="submit" class="link-perigo">Excluir</button>
+        </form>
+    </td>
+</tr>

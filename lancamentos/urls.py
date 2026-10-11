@@ -11,6 +11,11 @@ urlpatterns = [
     path("ajuda/", views.ajuda, name="ajuda"),
     path("cartoes/", views.cartoes, name="cartoes"),
     path("cartoes/<int:pk>/excluir/", views.excluir_cartao, name="excluir_cartao"),
+    path("investimentos/", views.investimentos, name="investimentos"),
+    path("investimentos/novo/", views.novo_investimento, name="novo_investimento"),
+    path("investimentos/<int:pk>/editar/", views.editar_investimento, name="editar_investimento"),
+    path("investimentos/<int:pk>/excluir/", views.excluir_investimento, name="excluir_investimento"),
+    path("investimentos/<int:pk>/", views.detalhe_investimento, name="detalhe_investimento"),
 
 
 ]

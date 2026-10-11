@@ -2,6 +2,7 @@
 
 {% block conteudo %}
     <h2 class="saudacao"><strong>{{ saudacao }}</strong>, {{ user.first_name|default:user.username }}!</h2>
+        {% include "lancamentos/_aviso_vencimentos.html" %}
     <div class="periodo">
         <a class="btn btn-claro" href="?ano={{ anterior.ano }}&mes={{ anterior.mes }}">&laquo;</a>
         <h1>{{ periodo|date:"F \d\e Y"|capfirst }}</h1>
