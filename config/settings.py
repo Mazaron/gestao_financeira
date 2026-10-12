@@ -1,4 +1,7 @@
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
+
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -12,17 +15,46 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
+# ---------- Segurança ----------
+# Padrão seguro: se a variável não existir, o modo debug fica DESLIGADO.
+DEBUG = os.environ.get("DJANGO_DEBUG") == "1"
 
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    raise ImproperlyConfigured("Defina DJANGO_SECRET_KEY no ambiente (.env).")
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+ALLOWED_HOSTS = [h for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if h]
+CSRF_TRUSTED_ORIGINS = [
+    o for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o
+]
+ADMIN_URL = os.environ.get("DJANGO_ADMIN_URL", "admin/")  # dica: use um endereço menos óbvio
 
-ALLOWED_HOSTS = []
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True                 # tudo por HTTPS
+    SESSION_COOKIE_SECURE = True               # cookie de sessão só trafega por HTTPS
+    CSRF_COOKIE_SECURE = True
+    # Comece baixo (ex.: 3600) e só aumente depois de confirmar que o HTTPS funciona.
+    SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_HSTS_SECONDS", "0"))
+    # SECURE_PROXY_SSL_HEADER: configure só quando soubermos como a hospedagem repassa o HTTPS.
 
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7          # sessões duram no máximo 7 dias
+
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+]
+
+# Cache: é onde ficam os contadores do rate limit
+if os.environ.get("REDIS_URL"):
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": os.environ["REDIS_URL"],
+        }
+    }
+else:  # desenvolvimento
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 
 # Application definition
 
@@ -38,6 +70,7 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
+    "allauth.mfa",
 ]
 
 MIDDLEWARE = [
@@ -117,11 +150,26 @@ STATIC_URL = 'static/'
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    "default": {
-        "BACKEND": "django.core.mail.backends.console.EmailBackend",
-    },
-}
+if os.environ.get("SMTP_HOST"):
+    MAILERS = {
+        "default": {
+            "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+            "OPTIONS": {
+                "host": os.environ["SMTP_HOST"],
+                "use_tls": True,  # porta 587 por padrão
+                "username": os.environ.get("SMTP_USER", ""),
+                "password": os.environ.get("SMTP_PASSWORD", ""),
+            },
+        },
+    }
+else:  # desenvolvimento: o e-mail aparece no terminal
+    MAILERS = {
+        "default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"},
+    }
+
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DEFAULT_FROM_EMAIL", "Minhas Finanças <nao-responda@minhasfinancas.local>"
+)
 
 # ---------- Contas (django-allauth) ----------
 AUTHENTICATION_BACKENDS = [
@@ -139,8 +187,6 @@ LOGOUT_REDIRECT_URL = "account_login"
 
 # E-mail: em desenvolvimento, imprime a mensagem no terminal
 
-DEFAULT_FROM_EMAIL = "Minhas Finanças <nao-responda@minhasfinancas.local>"
-
 SOCIALACCOUNT_PROVIDERS = {
     "google": {
         "APP": {
@@ -151,3 +197,16 @@ SOCIALACCOUNT_PROVIDERS = {
         "SCOPE": ["profile", "email"],
     }
 }
+
+ACCOUNT_RATE_LIMITS = {
+    "login_failed": "10/m/ip,5/5m/key",    # falhas: por IP e por conta tentada
+    "login": "30/m/ip",
+    "signup": "10/h/ip",
+    "reset_password": "5/h/ip,3/h/key",
+    "reset_password_from_key": "10/m/ip",
+    "change_password": "5/m/user",
+    "manage_email": "5/m/user",
+}
+
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+MFA_TOTP_ISSUER = "Minhas Finanças"

@@ -22,6 +22,8 @@ from .forms import (
 )
 from .models import Cartao, Investimento, Lancamento, Movimentacao, Posicao
 
+from .seguranca import limite_de_escrita
+
 
 
 @login_required
@@ -126,6 +128,7 @@ def _lista_do_mes(data):
 
 
 @login_required
+@limite_de_escrita
 def novo_lancamento(request):
     if request.method == "POST":
         form = LancamentoForm(request.POST, usuario=request.user)
@@ -138,7 +141,9 @@ def novo_lancamento(request):
 
 
 @login_required
+@limite_de_escrita
 def editar_lancamento(request, pk):
+    
     lancamento = get_object_or_404(Lancamento, pk=pk, usuario=request.user)
     if request.method == "POST":
         form = LancamentoForm(request.POST, instance=lancamento)
@@ -151,6 +156,7 @@ def editar_lancamento(request, pk):
 
 
 @login_required
+@limite_de_escrita
 def excluir_lancamento(request, pk):
     lancamento = get_object_or_404(Lancamento, pk=pk, usuario=request.user)
     if request.method == "POST":
@@ -175,6 +181,7 @@ def excluir_lancamento(request, pk):
 
 
 @login_required
+@limite_de_escrita
 def perfil(request):
     if request.method == "POST":
         form = PerfilForm(request.POST, instance=request.user)
@@ -193,6 +200,7 @@ def ajuda(request):
 
 
 @login_required
+@limite_de_escrita
 def cartoes(request):
     if request.method == "POST":
         form = CartaoForm(request.POST)
@@ -217,7 +225,9 @@ def cartoes(request):
 
 
 @login_required
+@limite_de_escrita
 def excluir_cartao(request, pk):
+
     cartao = get_object_or_404(Cartao, pk=pk, usuario=request.user)
     if request.method == "POST":
         try:
@@ -281,6 +291,7 @@ def investimentos(request):
 
 
 @login_required
+@limite_de_escrita
 def novo_investimento(request):
     if request.method == "POST":
         form = InvestimentoForm(request.POST)
@@ -301,6 +312,7 @@ def novo_investimento(request):
 
 
 @login_required
+@limite_de_escrita
 def editar_investimento(request, pk):
     investimento = get_object_or_404(Investimento, pk=pk, usuario=request.user)
     if request.method == "POST":
@@ -327,6 +339,7 @@ def editar_investimento(request, pk):
 
 
 @login_required
+@limite_de_escrita
 def detalhe_investimento(request, pk):
     inv = get_object_or_404(
         Investimento.objects.prefetch_related("movimentacoes", "posicoes"),
@@ -391,6 +404,7 @@ def detalhe_investimento(request, pk):
 
 
 @login_required
+@limite_de_escrita
 def excluir_investimento(request, pk):
     investimento = get_object_or_404(Investimento, pk=pk, usuario=request.user)
     if request.method == "POST":

@@ -9,6 +9,9 @@ from django.utils import timezone
 from .models import Cartao, Investimento, Lancamento, Movimentacao
 from .utils import adicionar_meses, formatar_reais, vencimentos_da_compra
 
+from .models import Cartao, Categoria, Investimento, Lancamento, Movimentacao
+from .seguranca import validar_sem_cartao
+
 # Aceita: 1.123,00 | 1123,00 | 1123 | 12,5 | 0,99
 PADRAO_VALOR = re.compile(r"(\d{1,3}(\.\d{3})+|\d+)(,\d{1,2})?")
 VALOR_MAXIMO = Decimal("9999999.99")
@@ -49,10 +52,18 @@ class LancamentoForm(forms.ModelForm):
         initial=1,
         help_text="1 = à vista. O valor total será dividido entre as parcelas.",
     )
+    
+    categoria = forms.ModelChoiceField(
+        queryset=Categoria.objects.all(),
+        empty_label="Selecione uma Categoria",
+        label="Categoria",
+    )
+
 
     class Meta:
         model = Lancamento
         fields = ["descricao", "categoria", "data"]
+        
 
     def __init__(self, *args, usuario=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -141,6 +152,11 @@ class LancamentoForm(forms.ModelForm):
         Lancamento.objects.bulk_create(lancamentos)
         return datas[0]
 
+    def clean_descricao(self):
+        descricao = self.cleaned_data["descricao"]
+        validar_sem_cartao(descricao)
+        return descricao
+
 
 class CartaoForm(forms.ModelForm):
     class Meta:
@@ -151,6 +167,11 @@ class CartaoForm(forms.ModelForm):
             "dia_fechamento": "Dia do fechamento da fatura",
             "dia_vencimento": "Dia do vencimento",
         }
+
+    def clean_nome(self):
+        nome = self.cleaned_data["nome"]
+        validar_sem_cartao(nome)
+        return nome
 
 
 class PerfilForm(forms.ModelForm):
@@ -223,6 +244,11 @@ class InvestimentoForm(forms.ModelForm):
         }),
     )
 
+    tipo = forms.ChoiceField(
+        label="Tipo",
+        choices=[("", "Selecione o Tipo de Investimento")] + list(Investimento.TIPOS),
+    )
+
     class Meta:
         model = Investimento
         fields = [
@@ -293,6 +319,16 @@ class InvestimentoForm(forms.ModelForm):
         if commit:
             inv.save()
         return inv
+
+    def clean_nome(self):
+        nome = self.cleaned_data["nome"]
+        validar_sem_cartao(nome)
+        return nome
+
+    def clean_observacoes(self):
+        observacoes = self.cleaned_data["observacoes"]
+        validar_sem_cartao(observacoes)
+        return observacoes
 
 class _BaseMovimento(forms.Form):
     data = _campo_data("Data")

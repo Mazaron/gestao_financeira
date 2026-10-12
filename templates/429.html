@@ -1,0 +1,11 @@
+{% extends "lancamentos/base.html" %}
+
+{% block titulo %}Muitas tentativas{% endblock %}
+
+{% block conteudo %}
+    <div class="painel form-caixa">
+        <h2>Muitas tentativas</h2>
+        <p>Detectamos muitas ações em pouco tempo. Aguarde um minuto e tente novamente.</p>
+        <p><a class="btn btn-claro" href="{% url 'lista' %}">Voltar ao início</a></p>
+    </div>
+{% endblock %}
