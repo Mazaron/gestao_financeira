@@ -1,5 +1,5 @@
 {% extends "lancamentos/base.html" %}
-{% load socialaccount %}
+{% load socialaccount static %}
 
 {% block titulo %}Criar conta{% endblock %}
 
@@ -25,4 +25,8 @@
 
         <p class="suave">Já tem conta? <a href="{% url 'account_login' %}">Entrar</a></p>
     </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{% static 'lancamentos/mascaras.js' %}"></script>
 {% endblock %}

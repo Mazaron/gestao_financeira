@@ -9,6 +9,7 @@
             <dt>Usuário</dt><dd>{{ user.username }}</dd>
             <dt>E-mail</dt><dd>{{ user.email|default:"não informado" }}</dd>
             <dt>Membro desde</dt><dd>{{ user.date_joined|date:"d/m/Y" }}</dd>
+            <dt>CPF</dt><dd>{{ user.perfil.cpf_mascarado|default:"não informado" }}</dd>
         </dl>
 
         <form method="post">

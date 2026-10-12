@@ -28,3 +28,22 @@ function mascaraData(input) {
 
 document.querySelectorAll('[data-mascara="dinheiro"]').forEach(mascaraDinheiro);
 document.querySelectorAll('[data-mascara="data"]').forEach(mascaraData);
+
+
+
+function mascaraCpf(input) {
+    input.addEventListener("input", () => {
+        const d = input.value.replace(/\D/g, "").slice(0, 11);
+        let saida = d;
+        if (d.length > 9) {
+            saida = d.slice(0, 3) + "." + d.slice(3, 6) + "." + d.slice(6, 9) + "-" + d.slice(9);
+        } else if (d.length > 6) {
+            saida = d.slice(0, 3) + "." + d.slice(3, 6) + "." + d.slice(6);
+        } else if (d.length > 3) {
+            saida = d.slice(0, 3) + "." + d.slice(3);
+        }
+        input.value = saida;
+    });
+}
+
+document.querySelectorAll('[data-mascara="cpf"]').forEach(mascaraCpf);

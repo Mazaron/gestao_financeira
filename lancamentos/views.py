@@ -23,7 +23,10 @@ from .forms import (
 from .models import Cartao, Investimento, Lancamento, Movimentacao, Posicao
 
 from .seguranca import limite_de_escrita
-
+from .forms import (
+    CartaoForm, InvestimentoForm, LancamentoForm, MovimentacaoForm,
+    PerfilCompletoForm, PerfilForm, PosicaoForm, salvar_identificacao,
+)
 
 
 @login_required
@@ -411,3 +414,23 @@ def excluir_investimento(request, pk):
         investimento.delete()
         messages.success(request, "Investimento excluído.")
     return redirect("investimentos")
+
+
+@login_required
+@limite_de_escrita
+def completar_perfil(request):
+    if request.method == "POST":
+        form = PerfilCompletoForm(request.POST)
+        if form.is_valid():
+            dados = form.cleaned_data
+            salvar_identificacao(
+                request.user, dados["first_name"], dados["last_name"], dados["cpf"]
+            )
+            messages.success(request, "Cadastro completo. Obrigado!")
+            return redirect("lista")
+    else:
+        form = PerfilCompletoForm(initial={
+            "first_name": request.user.first_name,
+            "last_name": request.user.last_name,
+        })
+    return render(request, "lancamentos/completar_perfil.html", {"form": form})

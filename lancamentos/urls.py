@@ -16,6 +16,7 @@ urlpatterns = [
     path("investimentos/<int:pk>/editar/", views.editar_investimento, name="editar_investimento"),
     path("investimentos/<int:pk>/excluir/", views.excluir_investimento, name="excluir_investimento"),
     path("investimentos/<int:pk>/", views.detalhe_investimento, name="detalhe_investimento"),
+    path("completar-perfil/", views.completar_perfil, name="completar_perfil"),
 
 
 ]

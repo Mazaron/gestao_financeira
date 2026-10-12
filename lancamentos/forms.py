@@ -12,6 +12,11 @@ from .utils import adicionar_meses, formatar_reais, vencimentos_da_compra
 from .models import Cartao, Categoria, Investimento, Lancamento, Movimentacao
 from .seguranca import validar_sem_cartao
 
+from allauth.account.forms import SignupForm
+
+from .cpf import cpf_valido, somente_digitos
+from .models import Cartao, Investimento, Lancamento, Movimentacao, PerfilUsuario
+
 # Aceita: 1.123,00 | 1123,00 | 1123 | 12,5 | 0,99
 PADRAO_VALOR = re.compile(r"(\d{1,3}(\.\d{3})+|\d+)(,\d{1,2})?")
 VALOR_MAXIMO = Decimal("9999999.99")
@@ -177,8 +182,94 @@ class CartaoForm(forms.ModelForm):
 class PerfilForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ["first_name"]
-        labels = {"first_name": "Nome"}
+        fields = ["first_name", "last_name"]
+        labels = {"first_name": "Nome", "last_name": "Sobrenome"}
+
+
+PADRAO_NOME = re.compile(r"[^\W\d_]+(?:[ '’\-][^\W\d_]+)*")
+
+
+def validar_nome(texto, rotulo):
+    texto = " ".join(texto.split())
+    if not PADRAO_NOME.fullmatch(texto):
+        raise forms.ValidationError(f"{rotulo} inválido: use apenas letras.")
+    return texto
+
+
+def validar_cpf_campo(texto):
+    cpf = somente_digitos(texto)
+    if not cpf_valido(cpf):
+        raise forms.ValidationError("CPF inválido.")
+    return cpf
+
+
+def _campo_cpf():
+    return forms.CharField(
+        label="CPF",
+        max_length=14,
+        widget=forms.TextInput(attrs={
+            "placeholder": "000.000.000-00",
+            "inputmode": "numeric",
+            "autocomplete": "off",
+            "data-mascara": "cpf",
+        }),
+    )
+
+
+def salvar_identificacao(usuario, nome, sobrenome, cpf):
+    usuario.first_name = nome
+    usuario.last_name = sobrenome
+    usuario.save(update_fields=["first_name", "last_name"])
+    perfil, _ = PerfilUsuario.objects.get_or_create(usuario=usuario)
+    perfil.definir_cpf(cpf)
+    perfil.save()
+
+
+class CadastroForm(SignupForm):
+    first_name = forms.CharField(label="Nome", max_length=100)
+    last_name = forms.CharField(label="Sobrenome", max_length=100)
+    cpf = _campo_cpf()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.order_fields([
+            "first_name", "last_name", "username", "cpf",
+            "email", "password1", "password2",
+        ])
+
+    def clean_first_name(self):
+        return validar_nome(self.cleaned_data["first_name"], "Nome")
+
+    def clean_last_name(self):
+        return validar_nome(self.cleaned_data["last_name"], "Sobrenome")
+
+    def clean_cpf(self):
+        return validar_cpf_campo(self.cleaned_data["cpf"])
+
+    def save(self, request):
+        usuario = super().save(request)
+        salvar_identificacao(
+            usuario,
+            self.cleaned_data["first_name"],
+            self.cleaned_data["last_name"],
+            self.cleaned_data["cpf"],
+        )
+        return usuario
+
+
+class PerfilCompletoForm(forms.Form):
+    first_name = forms.CharField(label="Nome", max_length=100)
+    last_name = forms.CharField(label="Sobrenome", max_length=100)
+    cpf = _campo_cpf()
+
+    def clean_first_name(self):
+        return validar_nome(self.cleaned_data["first_name"], "Nome")
+
+    def clean_last_name(self):
+        return validar_nome(self.cleaned_data["last_name"], "Sobrenome")
+
+    def clean_cpf(self):
+        return validar_cpf_campo(self.cleaned_data["cpf"])
 
 
 def reais_para_decimal(texto):

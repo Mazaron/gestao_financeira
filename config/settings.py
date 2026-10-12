@@ -82,6 +82,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware',
+    "lancamentos.middleware.PerfilCompletoMiddleware",
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -156,9 +157,10 @@ if os.environ.get("SMTP_HOST"):
             "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
             "OPTIONS": {
                 "host": os.environ["SMTP_HOST"],
-                "use_tls": True,  # porta 587 por padrão
+                "use_tls": True,  # porta 587 é o padrão com use_tls
                 "username": os.environ.get("SMTP_USER", ""),
                 "password": os.environ.get("SMTP_PASSWORD", ""),
+                "timeout": 15,
             },
         },
     }
@@ -178,14 +180,26 @@ AUTHENTICATION_BACKENDS = [
 
 ACCOUNT_LOGIN_METHODS = {"email", "username"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
+ACCOUNT_FORMS = {"signup": "lancamentos.forms.CadastroForm"}   # <- NOVA
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 ACCOUNT_EMAIL_SUBJECT_PREFIX = "Minhas Finanças - "
+
+ACCOUNT_RATE_LIMITS = {
+    "login_failed": "10/m/ip,5/5m/key",
+    "login": "30/m/ip",
+    "signup": "10/h/ip",
+    "reset_password": "5/h/ip,3/h/key",
+    "reset_password_from_key": "10/m/ip",
+    "change_password": "5/m/user",
+    "manage_email": "5/m/user",
+}
+
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+MFA_TOTP_ISSUER = "Minhas Finanças"
 
 LOGIN_URL = "account_login"
 LOGIN_REDIRECT_URL = "lista"
 LOGOUT_REDIRECT_URL = "account_login"
-
-# E-mail: em desenvolvimento, imprime a mensagem no terminal
 
 SOCIALACCOUNT_PROVIDERS = {
     "google": {
@@ -198,15 +212,6 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
-ACCOUNT_RATE_LIMITS = {
-    "login_failed": "10/m/ip,5/5m/key",    # falhas: por IP e por conta tentada
-    "login": "30/m/ip",
-    "signup": "10/h/ip",
-    "reset_password": "5/h/ip,3/h/key",
-    "reset_password_from_key": "10/m/ip",
-    "change_password": "5/m/user",
-    "manage_email": "5/m/user",
-}
 
-MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
-MFA_TOTP_ISSUER = "Minhas Finanças"
+# ---------- CPF (dado pessoal protegido) ----------
+CPF_CHAVES_CRIPTO = os.environ.get("CPF_ENCRYPTION_KEYS", "")

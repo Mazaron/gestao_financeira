@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
-
+from .cpf import cifrar_cpf, decifrar_cpf, mascarar_cpf
 
 class Categoria(models.Model):
     TIPOS = [("R", "Receita"), ("D", "Despesa")]
@@ -243,3 +243,27 @@ class Posicao(models.Model):
     @property
     def valor_reais(self):
         return self.valor_centavos / 100
+
+class PerfilUsuario(models.Model):
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name="perfil")
+    cpf_criptografado = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"Perfil de {self.usuario.username}"
+
+    @property
+    def tem_cpf(self):
+        return bool(self.cpf_criptografado)
+
+    def definir_cpf(self, cpf):
+        """Recebe só os 11 dígitos e grava cifrado."""
+        self.cpf_criptografado = cifrar_cpf(cpf)
+
+    @property
+    def cpf_mascarado(self):
+        if not self.tem_cpf:
+            return "não informado"
+        try:
+            return mascarar_cpf(decifrar_cpf(self.cpf_criptografado))
+        except (ValueError, Exception):
+            return "indisponível"
