@@ -8,8 +8,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from .forms import CartaoForm, InvestimentoForm, LancamentoForm, PerfilForm
-from .models import Cartao, Investimento, Lancamento
+from .forms import CartaoForm, InvestimentoForm, LancamentoForm, PerfilForm, TagForm, garantir_tags_padrao
+from .models import Cartao, Investimento, Lancamento, Tag
 
 from .calculos import estimar_impostos, evolucao
 from .forms import (
@@ -28,13 +28,23 @@ from .forms import (
     PerfilCompletoForm, PerfilForm, PosicaoForm, salvar_identificacao,
 )
 
+MESES_PT = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+]
+MESES_ABREV_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+
 
 @login_required
 def lista_lancamentos(request):
     hoje = timezone.localdate()
     try:
-        ano = int(request.GET.get("ano", hoje.year))
-        mes = int(request.GET.get("mes", hoje.month))
+        periodo_param = request.GET.get("periodo")
+        if periodo_param:
+            ano, mes = (int(parte) for parte in periodo_param.split("-", 1))
+        else:
+            ano = int(request.GET.get("ano", hoje.year))
+            mes = int(request.GET.get("mes", hoje.month))
         if not 1 <= mes <= 12 or not 1900 <= ano <= 2200:
             raise ValueError
     except ValueError:
@@ -59,6 +69,26 @@ def lista_lancamentos(request):
     do_mes = Lancamento.objects.filter(
         usuario=request.user, data__year=ano, data__month=mes
     )
+
+    garantir_tags_padrao(request.user)
+    tipo_tags = request.GET.get("tipo", "D")
+    if tipo_tags not in ("R", "D"):
+        tipo_tags = "D"
+    tags_usuario = list(Tag.objects.filter(usuario=request.user, ativa=True))
+    totais_tags = {
+        item["tags"]: item["total"]
+        for item in do_mes.filter(
+            categoria__tipo=tipo_tags, tags__usuario=request.user
+        ).values("tags").annotate(total=Sum("valor_centavos"))
+    }
+    for tag in tags_usuario:
+        tag.total_centavos = totais_tags.get(tag.pk, 0) or 0
+        tag.total_reais = tag.total_centavos / 100
+
+    tag_selecionada = None
+    tag_id = request.GET.get("tag", "")
+    if tag_id.isdigit():
+        tag_selecionada = next((tag for tag in tags_usuario if str(tag.pk) == tag_id), None)
 
     receitas = do_mes.filter(categoria__tipo="R").aggregate(total=Sum("valor_centavos"))["total"] or 0
     despesas = do_mes.filter(categoria__tipo="D").aggregate(total=Sum("valor_centavos"))["total"] or 0
@@ -106,9 +136,11 @@ def lista_lancamentos(request):
     else:
         proximo = {"ano": ano, "mes": mes + 1}
 
-    lancamentos = do_mes.select_related("categoria", "cartao").order_by("-data")
+    lancamentos = do_mes.select_related("categoria", "cartao").prefetch_related("tags").order_by("-data")
     if dia_selecionado:
         lancamentos = lancamentos.filter(data=dia_selecionado)
+    if tag_selecionada:
+        lancamentos = lancamentos.filter(tags=tag_selecionada, categoria__tipo=tipo_tags)
 
     contexto = {
         "lancamentos": lancamentos,
@@ -116,14 +148,56 @@ def lista_lancamentos(request):
         "despesas": despesas / 100,
         "saldo": (receitas - despesas) / 100,
         "periodo": date(ano, mes, 1),
+        "periodo_nome": f"{MESES_PT[mes - 1]} {ano}",
+        "intervalo_mes": f"1 {MESES_ABREV_PT[mes - 1]} – {calendar.monthrange(ano, mes)[1]} {MESES_ABREV_PT[mes - 1]}",
+        "meses_seletor": [
+            {"numero": indice + 1, "nome": nome, "abreviado": MESES_ABREV_PT[indice]}
+            for indice, nome in enumerate(MESES_PT)
+        ],
+        "mes_atual": hoje.month,
+        "ano_atual": hoje.year,
         "dia_selecionado": dia_selecionado,
         "anterior": anterior,
         "proximo": proximo,
         "grafico": grafico,
         "semanas": semanas,
         "saudacao": saudacao,
+        "tags": tags_usuario,
+        "tipo_tags": tipo_tags,
+        "tag_selecionada": tag_selecionada,
     }
     return render(request, "lancamentos/lista.html", contexto)
+
+
+@login_required
+@limite_de_escrita
+def gerenciar_tags(request):
+    garantir_tags_padrao(request.user)
+    if request.method == "POST":
+        form = TagForm(request.POST, usuario=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Tag criada.")
+            return redirect("tags")
+    else:
+        form = TagForm(usuario=request.user)
+    return render(request, "lancamentos/tags.html", {
+        "form": form,
+        "tags": Tag.objects.filter(usuario=request.user, ativa=True),
+        "tags_padrao": ["Alimentação", "Educação", "Lazer", "Transporte", "Vestuario"],
+    })
+
+
+@login_required
+@limite_de_escrita
+def excluir_tag(request, pk):
+    tag = get_object_or_404(Tag, pk=pk, usuario=request.user, ativa=True)
+    if request.method == "POST":
+        tag.lancamentos.clear()
+        tag.ativa = False
+        tag.save(update_fields=["ativa"])
+        messages.success(request, f'Tag "{tag.nome}" excluída.')
+    return redirect("tags")
 
 def _lista_do_mes(data):
     """Redireciona para a lista do mês de uma data."""
@@ -149,12 +223,12 @@ def editar_lancamento(request, pk):
     
     lancamento = get_object_or_404(Lancamento, pk=pk, usuario=request.user)
     if request.method == "POST":
-        form = LancamentoForm(request.POST, instance=lancamento)
+        form = LancamentoForm(request.POST, instance=lancamento, usuario=request.user)
         if form.is_valid():
             lancamento = form.save()
             return _lista_do_mes(lancamento.data)
     else:
-        form = LancamentoForm(instance=lancamento)
+        form = LancamentoForm(instance=lancamento, usuario=request.user)
     return render(request, "lancamentos/form.html", {"form": form, "editando": True})
 
 

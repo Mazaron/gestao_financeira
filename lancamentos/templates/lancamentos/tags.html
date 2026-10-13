@@ -1,0 +1,33 @@
+{% extends "lancamentos/base.html" %}
+
+{% block titulo %}Tags{% endblock %}
+
+{% block conteudo %}
+<div class="painel form-caixa">
+    <h2>Minhas tags</h2>
+    <p class="suave">Crie tags para organizar seus lançamentos. As tags são privadas da sua conta.</p>
+    <form method="post" class="form-tags">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn" type="submit">Criar tag</button>
+    </form>
+    <h3>Tags disponíveis</h3>
+    <ul class="tags-gerenciadas">
+        {% for tag in tags %}
+            <li>
+                <span class="tag-chip"><span class="tag-chip-icone" aria-hidden="true">●</span>{{ tag.nome }}</span>
+                <span class="tag-acoes">
+                    {% if tag.padrao %}<span class="tag-selo">Padrão</span>{% endif %}
+                    <form method="post" action="{% url 'excluir_tag' tag.pk %}" onsubmit="return confirm('Excluir a tag {{ tag.nome|escapejs }}? Ela será removida dos lançamentos associados.');">
+                        {% csrf_token %}
+                        <button class="link-perigo" type="submit">Excluir</button>
+                    </form>
+                </span>
+            </li>
+        {% empty %}
+            <li>Nenhuma tag cadastrada.</li>
+        {% endfor %}
+    </ul>
+    <a href="{% url 'lista' %}">&larr; Voltar ao início</a>
+</div>
+{% endblock %}

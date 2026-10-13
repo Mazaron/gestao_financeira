@@ -4,9 +4,31 @@
     <h2 class="saudacao"><strong>{{ saudacao }}</strong>, {{ user.first_name|default:user.username }}!</h2>
         {% include "lancamentos/_aviso_vencimentos.html" %}
     <div class="periodo">
-        <a class="btn btn-claro" href="?ano={{ anterior.ano }}&mes={{ anterior.mes }}">&laquo;</a>
-        <h1>{{ periodo|date:"F \d\e Y"|capfirst }}</h1>
-        <a class="btn btn-claro" href="?ano={{ proximo.ano }}&mes={{ proximo.mes }}">&raquo;</a>
+        <span class="periodo-intervalo">{{ intervalo_mes }}</span>
+        <div class="periodo-controles">
+            <a class="seta-periodo" href="?ano={{ anterior.ano }}&mes={{ anterior.mes }}" aria-label="Mês anterior">‹</a>
+            <div class="periodo-popup-wrap" id="periodo-popup-wrap">
+                <button class="periodo-botao" id="periodo-botao" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="periodo-popup">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+                    <span>{{ periodo_nome }}</span>
+                    <span class="periodo-chevron">⌄</span>
+                </button>
+                <div class="periodo-popup" id="periodo-popup" role="dialog" aria-label="Escolher mês e ano" hidden>
+                    <div class="seletor-ano">
+                        <button type="button" data-ano-delta="-1" aria-label="Ano anterior">‹</button>
+                        <strong id="seletor-ano">{{ periodo.year }}</strong>
+                        <button type="button" data-ano-delta="1" aria-label="Próximo ano">›</button>
+                    </div>
+                    <div class="grade-meses">
+                        {% for mes in meses_seletor %}
+                            <a data-mes="{{ mes.numero }}" class="{% if mes.numero == periodo.month %}selecionado{% endif %}" {% if mes.numero == periodo.month %}aria-current="true"{% endif %} href="?ano={{ periodo.year }}&mes={{ mes.numero }}">{{ mes.abreviado }}</a>
+                        {% endfor %}
+                    </div>
+                    <a class="ir-mes-atual" href="?ano={{ ano_atual }}&mes={{ mes_atual }}">Ir para o mês atual</a>
+                </div>
+            </div>
+            <a class="seta-periodo" href="?ano={{ proximo.ano }}&mes={{ proximo.mes }}" aria-label="Próximo mês">›</a>
+        </div>
     </div>
 
     <section class="cards">
@@ -24,7 +46,7 @@
         </div>
     </section>
 
-    <section class="grade">
+    <section class="grade grade-inicio">
         <div class="painel">
             <h2>Saídas por dia</h2>
             <div class="calendario">
@@ -51,16 +73,39 @@
         </div>
 
         <div class="painel">
-            <h2>Despesas por categoria</h2>
-            <canvas id="grafico"></canvas>
-            {{ grafico|json_script:"dados-grafico" }}
+            <div class="cabecalho-tags">
+                <h2>Tags</h2>
+                <a href="{% url 'tags' %}">Gerenciar tags</a>
+            </div>
+            <div class="alternador-tags" role="group" aria-label="Tipo de lançamento para as tags">
+                <a class="{% if tipo_tags == 'D' %}ativo{% endif %}" href="?ano={{ periodo.year }}&mes={{ periodo.month }}&tipo=D">Despesas</a>
+                <a class="{% if tipo_tags == 'R' %}ativo{% endif %}" href="?ano={{ periodo.year }}&mes={{ periodo.month }}&tipo=R">Receitas</a>
+            </div>
+            <p class="suave">Totais de {{ periodo_nome }}. Selecione uma tag para ver os lançamentos.</p>
+            <div class="lista-tags">
+                {% for tag in tags %}
+                    <a class="item-tag {% if tag_selecionada.pk == tag.pk %}selecionada{% endif %}" href="?ano={{ periodo.year }}&mes={{ periodo.month }}&tipo={{ tipo_tags }}&tag={{ tag.pk }}#lancamentos">
+                        <span class="tag-chip"><span class="tag-chip-icone" aria-hidden="true">●</span>{{ tag.nome }}</span>
+                        <strong>R$ {{ tag.total_reais|floatformat:"2g" }}</strong>
+                    </a>
+                {% empty %}
+                    <p>Nenhuma tag cadastrada.</p>
+                {% endfor %}
+            </div>
         </div>
+    </section>
+
+    <section class="painel painel-grafico">
+        <h2>Despesas por categoria</h2>
+        <canvas id="grafico"></canvas>
+        {{ grafico|json_script:"dados-grafico" }}
     </section>
 
     <section class="painel" id="lancamentos">
         <h2>
-            {% if dia_selecionado %}Lançamentos de {{ dia_selecionado|date:"d/m/Y" }}{% else %}Lançamentos do mês{% endif %}
+            {% if tag_selecionada %}Lançamentos com #{{ tag_selecionada.nome }}{% elif dia_selecionado %}Lançamentos de {{ dia_selecionado|date:"d/m/Y" }}{% else %}Lançamentos do mês{% endif %}
         </h2>
+        {% if tag_selecionada %}<p><a href="?ano={{ periodo.year }}&mes={{ periodo.month }}&tipo={{ tipo_tags }}">&laquo; Remover filtro da tag</a></p>{% endif %}
         {% if dia_selecionado %}
             <p><a href="?ano={{ periodo.year }}&mes={{ periodo.month }}">&laquo; Ver o mês todo</a></p>
         {% endif %}
@@ -75,7 +120,7 @@
             {% for l in lancamentos %}
             <tr>
                 <td>{{ l.data|date:"d/m/Y" }}</td>
-                <td>{{ l.descricao }}{% if l.total_parcelas %} ({{ l.parcela_atual }}/{{ l.total_parcelas }}){% endif %}{% if l.cartao %}<br><span class="suave">{{ l.cartao.nome }} · compra em {{ l.data_compra|date:"d/m/Y" }}</span>{% endif %}</td>
+                <td>{{ l.descricao }}{% if l.total_parcelas %} ({{ l.parcela_atual }}/{{ l.total_parcelas }}){% endif %}{% if l.cartao %}<br><span class="suave">{{ l.cartao.nome }} · compra em {{ l.data_compra|date:"d/m/Y" }}</span>{% endif %}{% for tag in l.tags.all %}<br><span class="tag-chip"><span class="tag-chip-icone" aria-hidden="true">●</span>{{ tag.nome }}</span>{% endfor %}</td>
                 <td>{{ l.categoria.nome }}</td>
                 <td class="num {% if l.categoria.tipo == 'R' %}pos{% else %}neg{% endif %}">
                     {% if l.categoria.tipo == 'R' %}+{% else %}-{% endif %} {{ l.valor_reais|floatformat:"2g" }}
@@ -117,5 +162,54 @@
         } else {
             area.replaceWith("Sem despesas neste mês.");
         }
+    </script>
+    <script>
+        (() => {
+            const wrap = document.getElementById("periodo-popup-wrap");
+            const toggle = document.getElementById("periodo-botao");
+            const popup = document.getElementById("periodo-popup");
+            const yearLabel = document.getElementById("seletor-ano");
+            if (!wrap || !toggle || !popup || !yearLabel) return;
+
+            const pageYear = Number(yearLabel.textContent);
+            const pageMonth = Number("{{ periodo.month }}");
+            const monthLinks = [...popup.querySelectorAll("[data-mes]")];
+
+            function showYear(year) {
+                yearLabel.textContent = year;
+                monthLinks.forEach((link) => {
+                    const month = Number(link.dataset.mes);
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete("periodo");
+                    url.searchParams.set("ano", year);
+                    url.searchParams.set("mes", month);
+                    link.href = `${url.pathname}?${url.searchParams.toString()}`;
+                    link.classList.toggle("selecionado", year === pageYear && month === pageMonth);
+                });
+            }
+
+            toggle.addEventListener("click", () => {
+                popup.hidden = !popup.hidden;
+                toggle.setAttribute("aria-expanded", String(!popup.hidden));
+            });
+            popup.querySelectorAll("[data-ano-delta]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    showYear(Number(yearLabel.textContent) + Number(button.dataset.anoDelta));
+                });
+            });
+            document.addEventListener("click", (event) => {
+                if (!wrap.contains(event.target)) {
+                    popup.hidden = true;
+                    toggle.setAttribute("aria-expanded", "false");
+                }
+            });
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    popup.hidden = true;
+                    toggle.setAttribute("aria-expanded", "false");
+                    toggle.focus();
+                }
+            });
+        })();
     </script>
 {% endblock %}

@@ -1,0 +1,39 @@
+{% extends "lancamentos/base.html" %}
+
+{% block titulo %}E-mail da conta{% endblock %}
+
+{% block conteudo %}
+<section class="painel email-painel">
+    <a class="email-voltar" href="{% url 'perfil' %}">← Voltar ao perfil</a>
+    <p class="email-etiqueta">SEGURANÇA DA CONTA</p>
+    <h2>Seu endereço de e-mail</h2>
+    <p class="suave">Sua conta usa um único e-mail. Para alterá-lo, confirme o novo endereço pelo link que enviaremos.</p>
+
+    {% if current_emailaddress %}
+    <div class="email-atual">
+        <span class="suave">E-mail atual</span>
+        <strong>{{ current_emailaddress.email }}</strong>
+        {% if current_emailaddress.verified %}<span class="email-verificado">Confirmado</span>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if new_emailaddress %}
+    <div class="email-pendente">
+        <strong>Confirmação pendente</strong>
+        <span>Enviamos um link para {{ new_emailaddress.email }}.</span>
+        <div class="botoes">
+            <form method="post" action="{% url 'account_email' %}">{% csrf_token %}<input type="hidden" name="email" value="{{ new_emailaddress.email }}"><button class="btn btn-claro" type="submit" name="action_send">Reenviar confirmação</button></form>
+            {% if current_emailaddress %}<form method="post" action="{% url 'account_email' %}">{% csrf_token %}<input type="hidden" name="email" value="{{ new_emailaddress.email }}"><button class="link-perigo" type="submit" name="action_remove">Cancelar alteração</button></form>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <form class="email-form" method="post" action="{% url 'account_email' %}">
+        {% csrf_token %}
+        <label for="{{ form.email.id_for_label }}">{% if current_emailaddress %}Novo e-mail{% else %}Seu e-mail{% endif %}</label>
+        {{ form.email }}
+        {% for error in form.email.errors %}<span class="erro-campo">{{ error }}</span>{% endfor %}
+        <button class="btn" type="submit" name="action_add">{% if current_emailaddress %}Enviar confirmação{% else %}Cadastrar e-mail{% endif %}</button>
+    </form>
+</section>
+{% endblock %}

@@ -14,9 +14,30 @@ class Categoria(models.Model):
         return self.nome
 
 
+class Tag(models.Model):
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name="tags")
+    nome = models.CharField(max_length=40)
+    ativa = models.BooleanField(default=True)
+    padrao = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["nome"]
+        constraints = [
+            models.UniqueConstraint(fields=["usuario", "nome"], name="tag_unica_por_usuario")
+        ]
+
+    def __str__(self):
+        return self.nome
+
+
 class Cartao(models.Model):
+    BANDEIRAS = [
+        ("visa", "Visa"), ("mastercard", "Mastercard"), ("elo", "Elo"),
+        ("amex", "American Express"), ("hipercard", "Hipercard"), ("outra", "Outra"),
+    ]
     usuario = models.ForeignKey(User, on_delete=models.CASCADE)
     nome = models.CharField(max_length=50)
+    bandeira = models.CharField(max_length=12, choices=BANDEIRAS, default="outra")
     dia_fechamento = models.PositiveSmallIntegerField(
         validators=[MinValueValidator(1), MaxValueValidator(31)]
     )
@@ -39,6 +60,7 @@ class Lancamento(models.Model):
     total_parcelas = models.PositiveSmallIntegerField(null=True, blank=True)
     cartao = models.ForeignKey(Cartao, null=True, blank=True, on_delete=models.PROTECT)
     data_compra = models.DateField(null=True, blank=True)
+    tags = models.ManyToManyField(Tag, blank=True, related_name="lancamentos")
 
     @property
     def valor_reais(self):

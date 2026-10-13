@@ -6,7 +6,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from .models import Cartao, Investimento, Lancamento, Movimentacao
+from .models import Cartao, Investimento, Lancamento, Movimentacao, Tag
 from .utils import adicionar_meses, formatar_reais, vencimentos_da_compra
 
 from .models import Cartao, Categoria, Investimento, Lancamento, Movimentacao
@@ -23,6 +23,12 @@ VALOR_MAXIMO = Decimal("9999999.99")
 
 
 class LancamentoForm(forms.ModelForm):
+    tags = forms.ModelMultipleChoiceField(
+        queryset=Tag.objects.none(),
+        required=False,
+        label="Tags",
+        widget=forms.CheckboxSelectMultiple,
+    )
     valor = forms.CharField(
         label="Valor total (R$)",
         widget=forms.TextInput(attrs={
@@ -67,11 +73,14 @@ class LancamentoForm(forms.ModelForm):
 
     class Meta:
         model = Lancamento
-        fields = ["descricao", "categoria", "data"]
+        fields = ["descricao", "categoria", "data", "tags"]
         
 
     def __init__(self, *args, usuario=None, **kwargs):
         super().__init__(*args, **kwargs)
+        if usuario:
+            garantir_tags_padrao(usuario)
+            self.fields["tags"].queryset = Tag.objects.filter(usuario=usuario, ativa=True)
         if self.instance.pk:
             # Editando um lançamento que já existe
             del self.fields["parcelas"]
@@ -119,6 +128,7 @@ class LancamentoForm(forms.ModelForm):
         lancamento.valor_centavos = int(self.cleaned_data["valor"] * 100)
         if commit:
             lancamento.save()
+            self.save_m2m()
         return lancamento
 
     def salvar_para(self, usuario):
@@ -155,6 +165,10 @@ class LancamentoForm(forms.ModelForm):
                 )
             )
         Lancamento.objects.bulk_create(lancamentos)
+        tags = dados.get("tags")
+        if tags:
+            for lancamento in lancamentos:
+                lancamento.tags.set(tags)
         return datas[0]
 
     def clean_descricao(self):
@@ -163,15 +177,56 @@ class LancamentoForm(forms.ModelForm):
         return descricao
 
 
+TAGS_PADRAO = ["Alimentação", "Educação", "Lazer", "Transporte", "Vestuario"]
+
+
+def garantir_tags_padrao(usuario):
+    for nome in TAGS_PADRAO:
+        Tag.objects.get_or_create(usuario=usuario, nome=nome, defaults={"padrao": True})
+
+
+class TagForm(forms.ModelForm):
+    class Meta:
+        model = Tag
+        fields = ["nome"]
+        labels = {"nome": "Nome da tag"}
+        widgets = {"nome": forms.TextInput(attrs={"placeholder": "Ex.: Saúde"})}
+
+    def __init__(self, *args, usuario=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.usuario = usuario
+
+    def clean_nome(self):
+        nome = " ".join(self.cleaned_data["nome"].split())
+        if Tag.objects.filter(usuario=self.usuario, nome__iexact=nome, ativa=True).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError("Você já tem uma tag com esse nome.")
+        return nome
+
+    def save(self, commit=True):
+        tag = super().save(commit=False)
+        tag.usuario = self.usuario
+        if commit:
+            antiga = Tag.objects.filter(usuario=self.usuario, nome__iexact=tag.nome, ativa=False).first()
+            if antiga and not tag.pk:
+                antiga.ativa = True
+                antiga.save(update_fields=["ativa"])
+                return antiga
+            tag.ativa = True
+            tag.save()
+        return tag
+
+
 class CartaoForm(forms.ModelForm):
     class Meta:
         model = Cartao
-        fields = ["nome", "dia_fechamento", "dia_vencimento"]
+        fields = ["nome", "bandeira", "dia_fechamento", "dia_vencimento"]
         labels = {
             "nome": "Nome do cartão",
+            "bandeira": "Bandeira",
             "dia_fechamento": "Dia do fechamento da fatura",
             "dia_vencimento": "Dia do vencimento",
         }
+        help_texts = {"bandeira": "Informe a bandeira impressa no cartão. O número completo não é solicitado nem armazenado."}
 
     def clean_nome(self):
         nome = self.cleaned_data["nome"]

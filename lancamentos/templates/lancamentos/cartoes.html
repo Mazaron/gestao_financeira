@@ -9,6 +9,7 @@
             <table class="tabela">
                 <tr>
                     <th>Cartão</th>
+                    <th>Bandeira</th>
                     <th>Fecha dia</th>
                     <th>Vence dia</th>
                     <th class="num">Fatura deste mês</th>
@@ -18,6 +19,7 @@
                 {% for c in cartoes %}
                 <tr>
                     <td>{{ c.nome }}</td>
+                    <td>{{ c.get_bandeira_display }}</td>
                     <td>{{ c.dia_fechamento }}</td>
                     <td>{{ c.dia_vencimento }}</td>
                     <td class="num">R$ {{ c.fatura_mes|floatformat:"2g" }}</td>
@@ -42,9 +44,34 @@
         <form method="post">
             {% csrf_token %}
             {{ form.as_p }}
+            <p class="campo-deteccao">
+                <label for="numero-bin">Primeiros 8 números do cartão (opcional)</label>
+                <input id="numero-bin" type="text" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Somente para sugerir a bandeira">
+                <small class="suave">A sugestão é feita neste navegador. Os números não são enviados nem salvos.</small>
+            </p>
             <div class="botoes">
                 <button class="btn" type="submit">Salvar cartão</button>
             </div>
         </form>
     </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (() => {
+        const entrada = document.getElementById("numero-bin");
+        const bandeira = document.getElementById("id_bandeira");
+        if (!entrada || !bandeira) return;
+        entrada.addEventListener("input", () => {
+            const digitos = entrada.value.replace(/\D/g, "").slice(0, 8);
+            entrada.value = digitos;
+            if (!digitos) return;
+            const prefixo2 = Number(digitos.slice(0, 2));
+            const prefixo4 = Number(digitos.slice(0, 4));
+            if (digitos.startsWith("4")) bandeira.value = "visa";
+            else if ((prefixo2 >= 51 && prefixo2 <= 55) || (prefixo4 >= 2221 && prefixo4 <= 2720)) bandeira.value = "mastercard";
+            else if (digitos.startsWith("34") || digitos.startsWith("37")) bandeira.value = "amex";
+        });
+    })();
+</script>
 {% endblock %}
